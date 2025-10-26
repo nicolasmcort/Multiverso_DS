@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Grafo Dirigido Ponderado con Animación BFS (Final - Inicio Correcto)</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network@latest/dist/vis-network.min.js"></script>
+    <style>
+        /* Estilos CSS (Visuales y de UX) */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            padding: 30px; 
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        h1 { color: #007ACC; margin-bottom: 20px; border-bottom: 2px solid #007ACC; padding-bottom: 10px; }
+        
+        #main-container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+        }
+
+        #network-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #network {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #e0e0e0;
+            margin-top: 10px;
+        }
+        
+        #controls {
+            padding: 15px;
+            border: 1px solid #ddd;
+            background-color: #e9eff3;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        input[type="text"], input[type="number"], select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; transition: border-color 0.3s; }
+        input[type="text"]:focus, input[type="number"]:focus, select:focus { border-color: #007ACC; outline: none; }
+        
+        button { padding: 10px 18px; cursor: pointer; border: none; border-radius: 5px; color: white; font-weight: bold; transition: background-color 0.3s; }
+        button.add { background-color: #28a745; }
+        button.add:hover { background-color: #218838; }
+
+        button.action { background-color: #17a2b8; }
+        button.action.on { background-color: #007ACC; box-shadow: 0 0 5px #007ACC; }
+        
+        button.danger { background-color: #dc3545; }
+        button.danger.on { background-color: #c82333; box-shadow: 0 0 5px #dc3545; }
+
+        #output-message { font-weight: bold; margin-left: 20px; color: #343a40; }
+        .mode-status { font-style: italic; color: #007ACC; }
+
+        #info-panel {
+            width: 320px;
+            height: 500px; 
+            border: 1px solid #e0e0e0;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow-y: auto;
+        }
+        #info-panel h3 { margin-top: 0; color: #007ACC; border-bottom: 1px solid #007ACC; padding-bottom: 5px; }
+        .node-detail strong { color: #007ACC; }
+        .out-degree-high { color: red; font-weight: bold; }
+        .template-section {
+            border-right: 1px solid #ccc;
+            padding-right: 15px;
+            margin-right: 15px;
+        }
+        
+        /* Estilos CSS para la animación: Asegurar que el explorador se mueva suavemente */
+        #network .vis-node[id="EXPLORER_TOKEN"] {
+            transition: transform 0.7s linear !important; 
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>F por Jhon</h1>
+
+    <div id="controls">
+        <div class="template-section">
+            <label for="template-select">Cargar Plantilla:</label>
+            <select id="template-select" onchange="loadTemplate()">
+                <option value="none" selected disabled>Seleccione una estructura</option>
+                <option value="default">Grafo Inicial (A, B, C, D)</option>
+                <option value="basic">Grafo Básico (3 Nodos)</option>
+                <option value="zeolite">Zeolita Axial (Simplificada)</option>
+            </select>
+        </div>
+
+        <div class="template-section">
+            <label style="font-weight: bold;">Ruta BFS:</label>
+            <input type="text" id="bfs-source" placeholder="Origen (Ej: A)" style="width: 80px; text-transform: uppercase;">
+            <input type="text" id="bfs-target" placeholder="Destino (Ej: D)" style="width: 80px; text-transform: uppercase;">
+            <button class="action" onclick="findAndHighlightPathBFS()">Buscar 🔎</button>
+            <button class="danger" onclick="resetPath()">Limpiar</button>
+        </div>
+        
+        <input type="text" id="new-node-id" placeholder="ID (Ej: F)" style="width: 80px; text-transform: uppercase;">
+        <input type="text" id="new-node-desc" placeholder="Descripción" style="width: 150px;">
+        <button class="add" onclick="addNodeFromInput()">Añadir Nodo</button>
+
+        <button id="btn-edge-mode" class="action" onclick="toggleEdgeMode()">
+            Añadir Arista <span class="mode-status">(OFF)</span>
+        </button>
+        <input type="number" id="edge-weight-input" placeholder="Peso" value="1" style="width: 60px;">
+        <span id="edge-step-status" style="font-style: italic; color: #333;"></span>
+
+        <button id="btn-delete-mode" class="danger" onclick="toggleDeleteMode()">
+            Borrar Nodo <span class="mode-status">(OFF)</span>
+        </button>
+
+        <div id="output-message"></div>
+    </div>
+
+    <div id="main-container">
+        <div id="network-area">
+            <div id="network"></div>
+        </div>
+
+        <div id="info-panel">
+            <h3>Detalles del Nodo Seleccionado</h3>
+            <p id="info-node-id" class="node-detail"><strong>ID:</strong> Ninguno</p>
+            <p id="info-node-desc" class="node-detail"><strong>Descripción:</strong> --</p>
+            <p><strong>Grado de Salida (Max 6):</strong> <span id="info-degree-out">0</span></p>
+            <p><strong>Grado de Entrada:</strong> <span id="info-degree-in">0</span></p>
+            <hr>
+            <p><strong>Aristas Salientes:</strong></p>
+            <ul id="info-edges-out"></ul>
+            <p><strong>Aristas Entrantes:</strong></p>
+            <ul id="info-edges-in"></ul>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        // Colecciones de vis.js
+        let nodes = new vis.DataSet();
+        let edges = new vis.DataSet();
+        let network = null;
+        
+        // Variables de estado y datos
+        let deleteMode = false;
+        let edgeMode = false;
+        let edgeStep = 0; 
+        let sourceNode = null;
+        let nodeDescriptions = new Map();
+        let highlightedEdgeIds = []; 
+        let pathNodes = []; 
+
+        const MAX_OUT_DEGREE = 6;
+        const HIGHLIGHT_COLOR = '#FF0000'; 
+        const ANIMATION_DURATION_MS = 700; // Velocidad de animación
+        const EXPLORER_OFFSET = 20; // Desplazamiento del emoji para que se vea a un lado
+        
+        // *** NODO EXPLORADOR (EMOJI) ***
+        const EXPLORER_ID = 'EXPLORER_TOKEN';
+        const EXPLORER_NODE_DATA = {
+            id: EXPLORER_ID,
+            label: '🚀', 
+            shape: 'circle',
+            size: 20,
+            font: { size: 25 },
+            fixed: { x: true, y: true }, 
+            physics: false, 
+            color: { background: 'rgba(0,0,0,0)', border: 'rgba(0,0,0,0)' }, 
+            hidden: true, 
+            allowDrag: false
+        };
+
+        // =========================================================================
+        // 1. ESTRUCTURAS DE PLANTILLAS
+        // =========================================================================
+
+        const GRAFO_PLANTILLAS = {
+            default: {
+                nodes: [
+                    { id: 'A', desc: 'Punto de Inicio' },
+                    { id: 'B', desc: 'Ruta 1' },
+                    { id: 'C', desc: 'Ruta 2' },
+                    { id: 'D', desc: 'Destino Final' }
+                ],
+                edges: [
+                    { from: 'A', to: 'B', weight: 10 },
+                    { from: 'A', to: 'C', weight: 5 },
+                    { from: 'B', to: 'D', weight: 3 }, 
+                    { from: 'C', to: 'D', weight: 8 },
+                    { from: 'D', to: 'A', weight: 2 }
+                ]
+            },
+            basic: {
+                nodes: [
+                    { id: 'X', desc: 'Nodo Central' },
+                    { id: 'Y', desc: 'Periférico 1' },
+                    { id: 'Z', desc: 'Periférico 2' }
+                ],
+                edges: [
+                    { from: 'X', to: 'Y', weight: 1 },
+                    { from: 'Y', to: 'Z', weight: 2 },
+                    { from: 'Z', to: 'X', weight: 3 },
+                    { from: 'Y', to: 'X', weight: 4 }
+                ]
+            },
+            zeolite: {
+                nodes: [
+                    { id: 'Z1', desc: 'Átomo Céntrico' },
+                    { id: 'Z2', desc: 'Brazo Superior' },
+                    { id: 'Z3', desc: 'Brazo Inferior' },
+                    { id: 'Z4', desc: 'Túnel Principal 1' },
+                    { id: 'Z5', desc: 'Túnel Principal 2' },
+                    { id: 'Z6', desc: 'Conexión Lateral' }
+                ],
+                edges: [
+                    { from: 'Z1', to: 'Z2', weight: 1.5 },
+                    { from: 'Z2', to: 'Z3', weight: 1.8 },
+                    { from: 'Z3', to: 'Z1', weight: 1.5 },
+                    { from: 'Z4', to: 'Z1', weight: 3.0 },
+                    { from: 'Z5', to: 'Z1', weight: 3.0 },
+                    { from: 'Z2', to: 'Z4', weight: 0.5 },
+                    { from: 'Z3', to: 'Z5', weight: 0.5 },
+                    { from: 'Z4', to: 'Z5', weight: 1.0 },
+                    { from: 'Z6', to: 'Z2', weight: 4.0 },
+                    { from: 'Z6', to: 'Z3', weight: 4.0 }
+                ]
+            }
+        };
+
+        // =========================================================================
+        // 2. CLASE GRAFO (LÓGICA MANUAL - ESTRUCTURA DE DATOS)
+        // =========================================================================
+        
+        class Grafo {
+            constructor() {
+                this.adjList = new Map(); 
+                this.edgeMap = new Map(); 
+            }
+
+            clear() {
+                this.adjList.clear();
+                this.edgeMap.clear();
+                nodeDescriptions.clear();
+                
+                const regularNodeIds = nodes.getIds().filter(id => id !== EXPLORER_ID);
+                nodes.remove(regularNodeIds);
+                edges.clear();
+            }
+
+            anadirNodo(nodeId, description) {
+                if (nodeId === EXPLORER_ID) return false; 
+
+                if (!this.adjList.has(nodeId)) {
+                    this.adjList.set(nodeId, []);
+                    nodeDescriptions.set(nodeId, description);
+                    // Aseguramos que los nodos normales pueden ser movidos por la física
+                    nodes.add({ id: nodeId, label: nodeId, title: nodeId, fixed: { x: false, y: false } }); 
+                    return true;
+                }
+                return false;
+            }
+
+            anadirArista(source, destination, weight) {
+                if (this.adjList.has(source) && this.adjList.has(destination) && source !== destination) {
+                    if (this.adjList.get(source).length >= MAX_OUT_DEGREE) {
+                        return false; 
+                    }
+                    
+                    const weightNum = parseFloat(weight);
+                    if (isNaN(weightNum)) return false;
+
+                    const edgeId = `${source}->${destination}-${Date.now()}`;
+                    
+                    this.adjList.get(source).push({ destino: destination, peso: weightNum, id: edgeId });
+                    
+                    edges.add({
+                        id: edgeId,
+                        from: source,
+                        to: destination,
+                        label: String(weightNum),
+                        arrows: 'to',
+                        font: { color: '#000000', size: 13, strokeWidth: 0 },
+                        color: { color: '#6A6A6A', highlight: 'black' }
+                    });
+
+                    this.edgeMap.set(`${source}->${destination}`, edgeId);
+                    
+                    return true;
+                }
+                return false;
+            }
+
+            findShortestPathBFS(startNodeId, endNodeId) {
+                if (!this.adjList.has(startNodeId) || !this.adjList.has(endNodeId)) {
+                    return null; 
+                }
+                
+                const queue = [startNodeId];
+                const predecessors = new Map();
+                const visited = new Set(); 
+                
+                visited.add(startNodeId);
+                predecessors.set(startNodeId, null); 
+
+                let pathFound = false;
+
+                while (queue.length > 0) {
+                    const currentNode = queue.shift();
+
+                    if (currentNode === endNodeId) {
+                        pathFound = true;
+                        break;
+                    }
+
+                    const neighbors = this.adjList.get(currentNode) || [];
+                    for (const edge of neighbors) {
+                        const neighborNode = edge.destino;
+
+                        if (!visited.has(neighborNode)) {
+                            visited.add(neighborNode);
+                            predecessors.set(neighborNode, currentNode);
+                            queue.push(neighborNode);
+                        }
+                    }
+                }
+
+                if (!pathFound) {
+                    return null; 
+                }
+
+                const path = [];
+                let step = endNodeId;
+                while (step !== null) {
+                    path.unshift(step); 
+                    step = predecessors.get(step);
+                }
+
+                return path; 
+            }
+
+            borrarNodo(nodeId) {
+                if (nodeId === EXPLORER_ID) return false; 
+
+                if (this.adjList.has(nodeId)) {
+                    this.adjList.get(nodeId).forEach(edge => {
+                        this.edgeMap.delete(`${nodeId}->${edge.destino}`);
+                    });
+
+                    for (let [key, neighbors] of this.adjList.entries()) {
+                        neighbors.forEach(edge => {
+                            if (edge.destino === nodeId) {
+                                this.edgeMap.delete(`${key}->${nodeId}`);
+                            }
+                        });
+                        this.adjList.set(key, neighbors.filter(edge => edge.destino !== nodeId));
+                    }
+                    
+                    this.adjList.delete(nodeId);
+                    nodeDescriptions.delete(nodeId);
+                    
+                    nodes.remove({id: nodeId});
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        const miGrafo = new Grafo(); 
+
+        // =========================================================================
+        // 3. LÓGICA DE PLANTILLAS Y VISUALIZACIÓN
+        // =========================================================================
+
+        function logMessage(msg, isError = false) {
+            const output = document.getElementById('output-message');
+            output.innerHTML = msg;
+            output.style.color = isError ? '#dc3545' : '#007ACC';
+        }
+
+        function loadTemplate() {
+            const templateId = document.getElementById('template-select').value;
+            const template = GRAFO_PLANTILLAS[templateId];
+
+            if (!template) {
+                logMessage("❌ Plantilla no encontrada.", true);
+                return;
+            }
+            
+            miGrafo.clear();
+            highlightedEdgeIds = []; 
+            pathNodes = [];
+            
+            // Ocultar y resetear el explorador
+            if (nodes.get(EXPLORER_ID)) {
+                nodes.update({id: EXPLORER_ID, hidden: true, x: 0, y: 0});
+            }
+
+            template.nodes.forEach(n => {
+                miGrafo.anadirNodo(n.id, n.desc);
+            });
+
+            template.edges.forEach(e => {
+                miGrafo.anadirArista(e.from, e.to, e.weight);
+            });
+
+            drawGraph();
+            logMessage(`✅ Plantilla "${templateId}" cargada con éxito.`, false);
+            updateInfoPanel(null);
+        }
+        
+        function drawGraph() {
+            const container = document.getElementById('network');
+            const data = { nodes: nodes, edges: edges };
+            
+            const options = {
+                nodes: {
+                    shape: 'box',
+                    size: 25,
+                    font: { color: '#ffffff', size: 14, face: 'monospace', strokeWidth: 2, strokeColor: '#005F99' },
+                    color: { background: '#007ACC', border: '#005F99', highlight: { background: '#FFD700', border: 'black' } },
+                    fixed: { x: false, y: false } 
+                },
+                edges: {
+                    arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+                    font: { color: '#343a40', size: 13, align: 'top' },
+                    width: 2, 
+                    color: { color: '#6A6A6A', highlight: 'black' },
+                    smooth: { type: 'dynamic' }
+                },
+                physics: { enabled: true, solver: 'barnesHut' },
+                
+                interaction: {
+                    dragView: true, 
+                    dragNodes: true,
+                    multiselect: false,
+                    zoomView: true
+                },
+                configure: {
+                    enabled: true,
+                    filter: 'layout, physics, interaction',
+                    control: function(option, value) {
+                        if (option === 'dragView') {
+                            return {
+                                'mod': 'ctrl',
+                                'button': 'right'
+                            };
+                        }
+                        return value;
+                    }
+                }
+            };
+
+            if (network) network.destroy(); 
+            network = new vis.Network(container, data, options);
+            network.on("click", handleNetworkClick);
+            
+            if (nodes.length > 0) {
+                 logMessage("Grafo cargado. Mueva el lienzo manteniendo pulsado CTRL + clic derecho.", false);
+            } else {
+                 logMessage("Espacio de trabajo vacío. Cargue una plantilla o añada nodos.", false);
+            }
+        }
+
+        // =========================================================================
+        // 4. MANEJADORES DE BFS Y RESALTADO
+        // =========================================================================
+
+        function resetPath() {
+            if (highlightedEdgeIds.length > 0) {
+                const edgesToUpdate = highlightedEdgeIds.map(id => ({
+                    id: id,
+                    color: { color: '#6A6A6A', highlight: 'black' },
+                    width: 2
+                }));
+                edges.update(edgesToUpdate);
+                highlightedEdgeIds = [];
+            }
+            
+            if (nodes.get(EXPLORER_ID) && !nodes.get(EXPLORER_ID).hidden) {
+                nodes.update({id: EXPLORER_ID, hidden: true, x: 0, y: 0}); 
+            }
+            
+            pathNodes = [];
+            logMessage("Resaltado y animación limpiados.", false);
+        }
+
+        function getAnimationPosition(nodeId) {
+            const positions = network.getPositions([nodeId]);
+            const center = positions[nodeId] ? positions[nodeId] : { x: 0, y: 0 };
+
+            // Aplicar desplazamiento para que el emoji se vea a un lado
+            return {
+                x: center.x + EXPLORER_OFFSET, // Mover a la derecha
+                y: center.y - EXPLORER_OFFSET  // Mover hacia arriba
+            };
+        }
+
+        function animatePath(path, step = 0) {
+            // Verifica si hemos llegado al último nodo (que ya fue el nodo de destino del último paso)
+            // Si path.length es 4, los pasos son 0, 1, 2. Si step llega a 3, termina.
+            if (step >= path.length) {
+                logMessage(`✅ Recorrido finalizado en ${path[path.length - 1]}.`, false);
+                return;
+            }
+
+            const toNodeId = path[step]; // Ahora 'step' es el *índice* del nodo destino
+
+            // 1. Obtener la posición con desplazamiento del nodo destino
+            const targetPosition = getAnimationPosition(toNodeId);
+            
+            // 2. Mover el explorador al nodo destino
+            nodes.update({
+                id: EXPLORER_ID,
+                x: targetPosition.x,
+                y: targetPosition.y
+            });
+
+            // 3. Llamada recursiva para el siguiente paso
+            setTimeout(() => {
+                animatePath(path, step + 1);
+            }, ANIMATION_DURATION_MS);
+        }
+
+
+        function findAndHighlightPathBFS() {
+            resetPath(); 
+
+            const sourceId = document.getElementById('bfs-source').value.trim().toUpperCase();
+            const targetId = document.getElementById('bfs-target').value.trim().toUpperCase();
+
+            if (!sourceId || !targetId) {
+                logMessage("❌ Debe especificar el nodo de Origen y Destino.", true);
+                return;
+            }
+
+            if (sourceId === targetId) {
+                logMessage("❌ El Origen y el Destino son el mismo nodo.", true);
+                return;
+            }
+            
+            if (!nodes.get(sourceId) || !nodes.get(targetId)) {
+                logMessage(`❌ Uno o ambos nodos no existen en el grafo.`, true);
+                return;
+            }
+
+            pathNodes = miGrafo.findShortestPathBFS(sourceId, targetId);
+
+            if (pathNodes === null) {
+                logMessage(`⚠️ NO se encontró un camino de ${sourceId} a ${targetId}.`, true);
+                return;
+            }
+
+            // 1. Resaltar aristas (Mismo código)
+            highlightedEdgeIds = [];
+            const edgesToHighlight = [];
+
+            for (let i = 0; i < pathNodes.length - 1; i++) {
+                const fromNode = pathNodes[i];
+                const toNode = pathNodes[i+1];
+                const edgeKey = `${fromNode}->${toNode}`;
+
+                const edgeId = miGrafo.edgeMap.get(edgeKey);
+                
+                if (edgeId) {
+                    highlightedEdgeIds.push(edgeId);
+                    edgesToHighlight.push({
+                        id: edgeId,
+                        color: { color: HIGHLIGHT_COLOR, highlight: HIGHLIGHT_COLOR },
+                        width: 4 
+                    });
+                }
+            }
+            edges.update(edgesToHighlight);
+            
+            // 2. *** CLAVE: Posicionar el nodo explorador en el origen ANTES de la animación ***
+            const startPosition = getAnimationPosition(sourceId);
+            
+            nodes.update({
+                id: EXPLORER_ID,
+                x: startPosition.x,
+                y: startPosition.y,
+                hidden: false
+            });
+
+            // 3. Iniciar la animación:
+            // Llamamos a animatePath *saltándonos el primer paso*, ya que el explorador
+            // ya está posicionado en el nodo de origen (pathNodes[0]).
+            // La animación debe empezar moviéndose al nodo destino (pathNodes[1]).
+            logMessage(`✅ Camino más corto encontrado: ${pathNodes.join(' → ')}. Iniciando animación...`, false);
+            
+            // Si la ruta tiene más de un nodo, empezamos a mover al segundo nodo (índice 1).
+            if (pathNodes.length > 1) {
+                animatePath(pathNodes, 1); 
+            }
+            // Si solo hay un nodo (origen = destino), no hace nada más que posicionarse.
+        }
+        
+        // =========================================================================
+        // 5. OTRAS FUNCIONES (CONTROL Y VISUALIZACIÓN)
+        // =========================================================================
+
+        function updateInfoPanel(nodeId) {
+            if (!miGrafo.adjList.has(nodeId)) {
+                document.getElementById('info-node-id').innerHTML = "<strong>ID:</strong> Ninguno";
+                document.getElementById('info-node-desc').innerHTML = "<strong>Descripción:</strong> --";
+                document.getElementById('info-degree-out').textContent = "0";
+                document.getElementById('info-degree-in').textContent = "0";
+                document.getElementById('info-edges-out').innerHTML = "";
+                document.getElementById('info-edges-in').innerHTML = "";
+                return;
+            }
+
+            document.getElementById('info-node-id').innerHTML = `<strong>ID:</strong> ${nodeId}`;
+            document.getElementById('info-node-desc').innerHTML = `<strong>Descripción:</strong> ${nodeDescriptions.get(nodeId) || 'N/A'}`;
+            
+            const outEdges = miGrafo.adjList.get(nodeId);
+            let outList = '';
+            outEdges.forEach(edge => { outList += `<li>→ ${edge.destino} (Peso: ${edge.peso})</li>`; });
+            document.getElementById('info-edges-out').innerHTML = outList || '<li>Ninguna</li>';
+            document.getElementById('info-degree-out').textContent = outEdges.length;
+
+            let inList = '';
+            let degreeIn = 0;
+            miGrafo.adjList.forEach((edges, sourceId) => {
+                edges.forEach(edge => {
+                    if (edge.destino === nodeId) {
+                        inList += `<li>← ${sourceId} (Peso: ${edge.peso})</li>`;
+                        degreeIn++;
+                    }
+                });
+            });
+            document.getElementById('info-edges-in').innerHTML = inList || '<li>Ninguna</li>';
+            document.getElementById('info-degree-in').textContent = degreeIn;
+            
+            const degreeOutElement = document.getElementById('info-degree-out');
+            if (outEdges.length >= MAX_OUT_DEGREE) {
+                degreeOutElement.classList.add('out-degree-high');
+            } else {
+                degreeOutElement.classList.remove('out-degree-high');
+            }
+        }
+
+        function updateButtonStyles(buttonId, mode) {
+            const btn = document.getElementById(buttonId);
+            const statusSpan = btn.querySelector('.mode-status');
+            if (mode) {
+                btn.classList.add('on');
+                statusSpan.textContent = "(ON)";
+            } else {
+                btn.classList.remove('on');
+                statusSpan.textContent = "(OFF)";
+            }
+        }
+        
+        function toggleDeleteMode() {
+            if (edgeMode) toggleEdgeMode();
+            deleteMode = !deleteMode;
+            updateButtonStyles('btn-delete-mode', deleteMode);
+            document.getElementById('network').style.cursor = deleteMode ? 'crosshair' : 'default';
+            logMessage(deleteMode ? "Modo borrar ACTIVO: Haz clic en un nodo." : "Modo borrar DESACTIVO.", false);
+        }
+
+        function toggleEdgeMode() {
+            if (deleteMode) toggleDeleteMode();
+            edgeMode = !edgeMode;
+            edgeStep = edgeMode ? 1 : 0;
+            sourceNode = null;
+
+            updateButtonStyles('btn-edge-mode', edgeMode);
+            document.getElementById('edge-step-status').textContent = edgeMode ? "Selecciona el nodo de ORIGEN" : "";
+            document.getElementById('network').style.cursor = edgeMode ? 'pointer' : 'default';
+            logMessage(edgeMode ? "Modo Añadir Arista ACTIVO." : "Modo Añadir Arista DESACTIVO.", false);
+        }
+        
+        function handleNetworkClick(params) {
+            const clickedNodes = params.nodes;
+            
+            if (clickedNodes.length === 0) {
+                updateInfoPanel(null);
+                return; 
+            }
+            
+            const nodeId = clickedNodes[0];
+
+            if (nodeId === EXPLORER_ID) return; 
+
+            if (deleteMode) {
+                if (miGrafo.borrarNodo(nodeId)) {
+                    logMessage(`🗑️ Nodo ${nodeId} borrado.`, false);
+                } else {
+                    logMessage("❌ Error al borrar.", true);
+                }
+                updateInfoPanel(null);
+                return;
+            }
+
+            if (edgeMode) {
+                if (edgeStep === 1) {
+                    sourceNode = nodeId;
+                    edgeStep = 2;
+                    document.getElementById('edge-step-status').textContent = `Origen: ${sourceNode}. Selecciona el nodo de DESTINO.`;
+                    
+                } else if (edgeStep === 2) {
+                    const targetNode = nodeId;
+                    const weight = document.getElementById('edge-weight-input').value;
+                    
+                    if (sourceNode === targetNode) {
+                         logMessage("❌ Origen y Destino no pueden ser el mismo.", true);
+                    } else if (miGrafo.anadirArista(sourceNode, targetNode, weight)) {
+                        logMessage(`✅ Arista ${sourceNode} → ${targetNode} con peso ${weight} añadida.`, false);
+                    } else {
+                        logMessage(`❌ No se pudo añadir arista. Revisa el Grado Máximo (${MAX_OUT_DEGREE}).`, true);
+                    }
+                    
+                    updateInfoPanel(sourceNode);
+                    
+                    edgeStep = 1;
+                    sourceNode = null;
+                    document.getElementById('edge-step-status').textContent = "Selecciona el nodo de ORIGEN";
+                }
+                return;
+            }
+            
+            updateInfoPanel(nodeId);
+        }
+
+        function addNodeFromInput() {
+            const id = document.getElementById('new-node-id').value.trim().toUpperCase();
+            const desc = document.getElementById('new-node-desc').value.trim();
+            
+            if (!id) {
+                logMessage("❌ Debe ingresar un ID para el nodo.", true);
+                return;
+            }
+
+            if (miGrafo.anadirNodo(id, desc)) {
+                logMessage(`✅ Nodo ${id} añadido. La física lo reposicionará.`, false);
+            } else {
+                logMessage(`⚠️ Nodo ${id} ya existía.`, true);
+            }
+
+            document.getElementById('new-node-id').value = ''; 
+            document.getElementById('new-node-desc').value = '';
+        }
+
+        // --- INICIALIZACIÓN ---
+
+        function initializeGrafo() {
+            if (!nodes.get(EXPLORER_ID)) {
+                 nodes.add(EXPLORER_NODE_DATA); 
+            }
+            
+            loadTemplate('default'); 
+            document.getElementById('template-select').value = 'default';
+            updateInfoPanel(null);
+        }
+
+        window.onload = initializeGrafo; 
+    </script>
+
+</body>
+</html>
